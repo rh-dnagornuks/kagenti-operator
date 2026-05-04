@@ -31,6 +31,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -685,12 +687,27 @@ func (r *AgentRuntimeReconciler) mapConfigMapToAgentRuntimes(ctx context.Context
 	return r.mapNamespaceConfigMapToAgentRuntimes(ctx, obj)
 }
 
+// SandboxCRDExists checks whether the agent-sandbox CRD is installed on the cluster.
+func SandboxCRDExists(cfg *rest.Config) bool {
+	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		return false
+	}
+	resources, err := dc.ServerResourcesForGroupVersion("agents.x-k8s.io/v1alpha1")
+	if err != nil {
+		return false
+	}
+	for _, r := range resources.APIResources {
+		if r.Kind == KindSandbox {
+			return true
+		}
+	}
+	return false
+}
+
 // SetupWithManager registers the AgentRuntime controller with the manager.
 func (r *AgentRuntimeReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	sandboxObj := &unstructured.Unstructured{}
-	sandboxObj.SetGroupVersionKind(sandboxGVK)
-
-	return ctrl.NewControllerManagedBy(mgr).
+	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&agentv1alpha1.AgentRuntime{}).
 		Watches(
 			&appsv1.Deployment{},
@@ -701,13 +718,20 @@ func (r *AgentRuntimeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(r.mapWorkloadToAgentRuntime("apps/v1", "StatefulSet")),
 		).
 		Watches(
-			sandboxObj,
-			handler.EnqueueRequestsFromMapFunc(r.mapWorkloadToAgentRuntime("agents.x-k8s.io/v1alpha1", KindSandbox)),
-		).
-		Watches(
 			&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(r.mapConfigMapToAgentRuntimes),
-		).
+		)
+
+	if SandboxCRDExists(mgr.GetConfig()) {
+		sandboxObj := &unstructured.Unstructured{}
+		sandboxObj.SetGroupVersionKind(sandboxGVK)
+		builder = builder.Watches(
+			sandboxObj,
+			handler.EnqueueRequestsFromMapFunc(r.mapWorkloadToAgentRuntime("agents.x-k8s.io/v1alpha1", KindSandbox)),
+		)
+	}
+
+	return builder.
 		Named("agentruntime").
 		Complete(r)
 }
