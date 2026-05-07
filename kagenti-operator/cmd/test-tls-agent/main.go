@@ -51,11 +51,11 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/agent-card.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(cardJSON)
+		_, _ = w.Write(cardJSON)
 	})
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -89,7 +89,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create X509Source: %v", err)
 	}
-	defer x509Source.Close()
+	defer x509Source.Close() //nolint:errcheck
 
 	svid, err := x509Source.GetX509SVID()
 	if err != nil {
@@ -124,8 +124,8 @@ func main() {
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
-	httpServer.Shutdown(shutdownCtx)
-	tlsServer.Shutdown(shutdownCtx)
+	_ = httpServer.Shutdown(shutdownCtx)
+	_ = tlsServer.Shutdown(shutdownCtx)
 	wg.Wait()
 }
 
@@ -140,7 +140,7 @@ func buildAgentCard(agentName, namespace string) []byte {
 	}
 
 	card := map[string]interface{}{
-		"name":        fmt.Sprintf("%s", agentName),
+		"name":        agentName,
 		"description": "TLS test agent for Phase 1 verified fetch testing",
 		"url":         fmt.Sprintf("https://%s.%s.svc.cluster.local:8443", agentName, namespace),
 		"version":     "1.0.0",
