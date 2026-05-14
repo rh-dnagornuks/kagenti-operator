@@ -88,9 +88,14 @@ func (b *ContainerBuilder) BuildEnvoyProxyContainerWithSpireOption(spireEnabled 
 			ReadOnly:  true,
 		},
 		{
+			// Not ReadOnly: subPath mounts of /shared/client-id.txt and
+			// /shared/client-secret.txt (added later by
+			// ApplyKeycloakClientCredentialsSecretVolumes) need to create
+			// their targets inside this mount. The combined authbridge
+			// images use a read-only base (ubi9-micro), so /shared must
+			// be mounted RW for runc to create the subPath mountpoints.
 			Name:      "shared-data",
 			MountPath: "/shared",
-			ReadOnly:  true,
 		},
 		{
 			Name:      "authproxy-routes",

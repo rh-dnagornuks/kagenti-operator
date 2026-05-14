@@ -444,9 +444,11 @@ var _ = Describe("AuthBridge Injection E2E", Ordered, func() {
 
 			By("verifying spiffe-helper is wired into envoy-proxy via SPIRE_ENABLED env")
 			Eventually(func(g Gomega) {
-				spireEnv, err := utils.KubectlGetJsonpath("pod", "",
-					authBridgeTestNamespace,
-					"{.items[?(@.metadata.labels.app\\.kubernetes\\.io/name=='authbridge-agent')].spec.containers[?(@.name=='envoy-proxy')].env[?(@.name=='SPIRE_ENABLED')].value}")
+				labelSel := "@.metadata.labels.app\\.kubernetes\\.io/name=='authbridge-agent'"
+				jp := "{.items[?(" + labelSel + ")]" +
+					".spec.containers[?(@.name=='envoy-proxy')]" +
+					".env[?(@.name=='SPIRE_ENABLED')].value}"
+				spireEnv, err := utils.KubectlGetJsonpath("pod", "", authBridgeTestNamespace, jp)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(spireEnv).To(Equal("true"))
 			}).Should(Succeed())
@@ -1764,9 +1766,11 @@ rules:
 
 		By("verifying spiffe-helper is wired into envoy-proxy via SPIRE_ENABLED env")
 		Eventually(func(g Gomega) {
-			spireEnv, err := utils.KubectlGetJsonpath("pod", "",
-				combinedTestNamespace,
-				"{.items[?(@.metadata.labels.app\\.kubernetes\\.io/name=='combined-agent')].spec.containers[?(@.name=='envoy-proxy')].env[?(@.name=='SPIRE_ENABLED')].value}")
+			labelSel := "@.metadata.labels.app\\.kubernetes\\.io/name=='combined-agent'"
+			jp := "{.items[?(" + labelSel + ")]" +
+				".spec.containers[?(@.name=='envoy-proxy')]" +
+				".env[?(@.name=='SPIRE_ENABLED')].value}"
+			spireEnv, err := utils.KubectlGetJsonpath("pod", "", combinedTestNamespace, jp)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(spireEnv).To(Equal("true"))
 		}).Should(Succeed())
