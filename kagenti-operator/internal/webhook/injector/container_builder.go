@@ -124,16 +124,19 @@ func (b *ContainerBuilder) BuildEnvoyProxyContainerWithSpireOption(spireEnabled 
 				ReadOnly:  true,
 			},
 			// SPIRE workload-API socket. The bundled spiffe-helper inside
-			// the combined image dials unix:///spiffe-workload-api/spire-agent.sock
-			// (per defaults.go SocketPath). The CSI volume `spire-agent-socket`
-			// is already declared at the Pod level in volume_builder.go;
-			// without this mount the helper sits in a silent dial-loop and
-			// never writes /opt/svid*.pem or /opt/jwt_svid.token. Hidden
-			// until kagenti-extensions PR #424 (mTLS) became the first
-			// real consumer of SPIRE-issued material.
+			// the combined image dials the SocketPath from defaults.go's
+			// SpiffeConfig (default unix:///spiffe-workload-api/spire-agent.sock).
+			// The CSI volume `spire-agent-socket` is already declared at
+			// the Pod level in volume_builder.go; without this mount the
+			// helper sits in a silent dial-loop and never writes
+			// /opt/svid*.pem or /opt/jwt_svid.token. Hidden until
+			// kagenti-extensions PR #424 (mTLS) became the first real
+			// consumer of SPIRE-issued material. Mount path derived from
+			// SpiffeConfig.SocketPath so the three sites — defaults.go,
+			// here, and the proxy-sidecar variant below — can never drift.
 			corev1.VolumeMount{
 				Name:      "spire-agent-socket",
-				MountPath: "/spiffe-workload-api",
+				MountPath: spireSocketDir(b.cfg.Spiffe.SocketPath),
 				ReadOnly:  true,
 			},
 		)
@@ -200,6 +203,27 @@ func spireEnabledStr(b bool) string {
 	return "false"
 }
 
+// spireSocketDir returns the directory portion of the SPIRE workload-API
+// socket path, suitable for use as a container mountPath. Drops the
+// "unix://" scheme prefix and strips the trailing socket filename so
+// e.g. "unix:///spiffe-workload-api/spire-agent.sock" yields
+// "/spiffe-workload-api". Single source of truth: defaults.go's
+// SpiffeConfig.SocketPath. Returns "" when the input has no path
+// component (caller should fall back to a hardcoded default in that
+// edge case, but the configured default is a well-formed unix:// URI).
+func spireSocketDir(socketPath string) string {
+	stripped := strings.TrimPrefix(socketPath, "unix://")
+	if stripped == "" || stripped == "/" {
+		return ""
+	}
+	// path.Dir would import "path"; using strings to avoid the
+	// dependency for a one-liner.
+	if i := strings.LastIndex(stripped, "/"); i > 0 {
+		return stripped[:i]
+	}
+	return ""
+}
+
 // BuildProxySidecarContainer creates a combined authbridge container for proxy-sidecar mode.
 // Uses the authbridge image (authbridge-proxy + spiffe-helper bundled, no Envoy).
 // The app uses HTTP_PROXY env vars to route outbound traffic through the forward proxy.
@@ -248,17 +272,13 @@ func (b *ContainerBuilder) BuildProxySidecarContainerWithPorts(spireEnabled bool
 				MountPath: "/etc/spiffe-helper",
 				ReadOnly:  true,
 			},
-			// SPIRE workload-API socket. The bundled spiffe-helper inside
-			// the combined image dials unix:///spiffe-workload-api/spire-agent.sock
-			// (per defaults.go SocketPath). The CSI volume `spire-agent-socket`
-			// is already declared at the Pod level in volume_builder.go;
-			// without this mount the helper sits in a silent dial-loop and
-			// never writes /opt/svid*.pem or /opt/jwt_svid.token. Hidden
-			// until kagenti-extensions PR #424 (mTLS) became the first
-			// real consumer of SPIRE-issued material.
+			// SPIRE workload-API socket. See the matching mount in
+			// BuildEnvoyProxyContainerWithSpireOption for the full
+			// rationale. Mount path derived from SpiffeConfig.SocketPath
+			// (single source of truth in defaults.go).
 			corev1.VolumeMount{
 				Name:      "spire-agent-socket",
-				MountPath: "/spiffe-workload-api",
+				MountPath: spireSocketDir(b.cfg.Spiffe.SocketPath),
 				ReadOnly:  true,
 			},
 		)

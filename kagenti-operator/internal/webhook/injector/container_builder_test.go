@@ -392,15 +392,26 @@ func TestBuildProxySidecarContainer_SpireEnabled(t *testing.T) {
 // combined image dials this socket; without the mount it sits in a
 // silent dial-loop and never writes /opt/svid*.pem.
 func TestBuildEnvoyProxyContainer_SpireEnabled_HasSocketMount(t *testing.T) {
-	builder := NewContainerBuilder(config.CompiledDefaults())
+	cfg := config.CompiledDefaults()
+	builder := NewContainerBuilder(cfg)
 	container := builder.BuildEnvoyProxyContainerWithSpireOption(true)
+
+	// Derive the expected mount path from SpiffeConfig.SocketPath the
+	// same way the production code does, so a future change to the
+	// canonical SocketPath in defaults.go can't leave this test
+	// asserting against a stale literal.
+	wantPath := spireSocketDir(cfg.Spiffe.SocketPath)
+	if wantPath == "" {
+		t.Fatalf("spireSocketDir(%q) returned empty — defaults must declare a valid socket path", cfg.Spiffe.SocketPath)
+	}
 
 	found := false
 	for _, vm := range container.VolumeMounts {
 		if vm.Name == "spire-agent-socket" {
 			found = true
-			if vm.MountPath != "/spiffe-workload-api" {
-				t.Errorf("spire-agent-socket mount path = %q, want /spiffe-workload-api (matches defaults.go SocketPath)", vm.MountPath)
+			if vm.MountPath != wantPath {
+				t.Errorf("spire-agent-socket mount path = %q, want %q (derived from SpiffeConfig.SocketPath %q)",
+					vm.MountPath, wantPath, cfg.Spiffe.SocketPath)
 			}
 			if !vm.ReadOnly {
 				t.Error("spire-agent-socket mount should be read-only (CSI volume itself is read-only)")
@@ -432,15 +443,22 @@ func TestBuildEnvoyProxyContainer_SpireDisabled_NoSocketMount(t *testing.T) {
 // the envoy-proxy variant but for the proxy-sidecar combined image.
 // The bundled spiffe-helper has the same workload-API requirement.
 func TestBuildProxySidecarContainer_SpireEnabled_HasSocketMount(t *testing.T) {
-	builder := NewContainerBuilder(config.CompiledDefaults())
+	cfg := config.CompiledDefaults()
+	builder := NewContainerBuilder(cfg)
 	container := builder.BuildProxySidecarContainer(true)
+
+	wantPath := spireSocketDir(cfg.Spiffe.SocketPath)
+	if wantPath == "" {
+		t.Fatalf("spireSocketDir(%q) returned empty — defaults must declare a valid socket path", cfg.Spiffe.SocketPath)
+	}
 
 	found := false
 	for _, vm := range container.VolumeMounts {
 		if vm.Name == "spire-agent-socket" {
 			found = true
-			if vm.MountPath != "/spiffe-workload-api" {
-				t.Errorf("spire-agent-socket mount path = %q, want /spiffe-workload-api (matches defaults.go SocketPath)", vm.MountPath)
+			if vm.MountPath != wantPath {
+				t.Errorf("spire-agent-socket mount path = %q, want %q (derived from SpiffeConfig.SocketPath %q)",
+					vm.MountPath, wantPath, cfg.Spiffe.SocketPath)
 			}
 			if !vm.ReadOnly {
 				t.Error("spire-agent-socket mount should be read-only (CSI volume itself is read-only)")
