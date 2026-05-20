@@ -123,6 +123,19 @@ func (b *ContainerBuilder) BuildEnvoyProxyContainerWithSpireOption(spireEnabled 
 				MountPath: "/etc/spiffe-helper",
 				ReadOnly:  true,
 			},
+			// SPIRE workload-API socket. The bundled spiffe-helper inside
+			// the combined image dials unix:///spiffe-workload-api/spire-agent.sock
+			// (per defaults.go SocketPath). The CSI volume `spire-agent-socket`
+			// is already declared at the Pod level in volume_builder.go;
+			// without this mount the helper sits in a silent dial-loop and
+			// never writes /opt/svid*.pem or /opt/jwt_svid.token. Hidden
+			// until kagenti-extensions PR #424 (mTLS) became the first
+			// real consumer of SPIRE-issued material.
+			corev1.VolumeMount{
+				Name:      "spire-agent-socket",
+				MountPath: "/spiffe-workload-api",
+				ReadOnly:  true,
+			},
 		)
 	}
 
@@ -233,6 +246,19 @@ func (b *ContainerBuilder) BuildProxySidecarContainerWithPorts(spireEnabled bool
 			corev1.VolumeMount{
 				Name:      "spiffe-helper-config",
 				MountPath: "/etc/spiffe-helper",
+				ReadOnly:  true,
+			},
+			// SPIRE workload-API socket. The bundled spiffe-helper inside
+			// the combined image dials unix:///spiffe-workload-api/spire-agent.sock
+			// (per defaults.go SocketPath). The CSI volume `spire-agent-socket`
+			// is already declared at the Pod level in volume_builder.go;
+			// without this mount the helper sits in a silent dial-loop and
+			// never writes /opt/svid*.pem or /opt/jwt_svid.token. Hidden
+			// until kagenti-extensions PR #424 (mTLS) became the first
+			// real consumer of SPIRE-issued material.
+			corev1.VolumeMount{
+				Name:      "spire-agent-socket",
+				MountPath: "/spiffe-workload-api",
 				ReadOnly:  true,
 			},
 		)

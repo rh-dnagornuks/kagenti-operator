@@ -385,3 +385,83 @@ func TestBuildProxySidecarContainer_SpireEnabled(t *testing.T) {
 		t.Error("svid-output volume mount should be present when SPIRE is enabled")
 	}
 }
+
+// TestBuildEnvoyProxyContainer_SpireEnabled_HasSocketMount asserts that
+// the SPIRE workload-API socket volume is mounted into the envoy-proxy
+// container when SPIRE is on. The bundled spiffe-helper inside the
+// combined image dials this socket; without the mount it sits in a
+// silent dial-loop and never writes /opt/svid*.pem.
+func TestBuildEnvoyProxyContainer_SpireEnabled_HasSocketMount(t *testing.T) {
+	builder := NewContainerBuilder(config.CompiledDefaults())
+	container := builder.BuildEnvoyProxyContainerWithSpireOption(true)
+
+	found := false
+	for _, vm := range container.VolumeMounts {
+		if vm.Name == "spire-agent-socket" {
+			found = true
+			if vm.MountPath != "/spiffe-workload-api" {
+				t.Errorf("spire-agent-socket mount path = %q, want /spiffe-workload-api (matches defaults.go SocketPath)", vm.MountPath)
+			}
+			if !vm.ReadOnly {
+				t.Error("spire-agent-socket mount should be read-only (CSI volume itself is read-only)")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("envoy-proxy container missing spire-agent-socket mount when SPIRE is enabled — bundled spiffe-helper can't reach the workload API")
+	}
+}
+
+// TestBuildEnvoyProxyContainer_SpireDisabled_NoSocketMount: with SPIRE
+// off the socket mount must be absent — there's no spiffe-helper to
+// dial the socket, and mounting it would still try to schedule the
+// CSI volume.
+func TestBuildEnvoyProxyContainer_SpireDisabled_NoSocketMount(t *testing.T) {
+	builder := NewContainerBuilder(config.CompiledDefaults())
+	container := builder.BuildEnvoyProxyContainerWithSpireOption(false)
+
+	for _, vm := range container.VolumeMounts {
+		if vm.Name == "spire-agent-socket" {
+			t.Error("envoy-proxy container should NOT have spire-agent-socket mount when SPIRE is disabled")
+		}
+	}
+}
+
+// TestBuildProxySidecarContainer_SpireEnabled_HasSocketMount: same as
+// the envoy-proxy variant but for the proxy-sidecar combined image.
+// The bundled spiffe-helper has the same workload-API requirement.
+func TestBuildProxySidecarContainer_SpireEnabled_HasSocketMount(t *testing.T) {
+	builder := NewContainerBuilder(config.CompiledDefaults())
+	container := builder.BuildProxySidecarContainer(true)
+
+	found := false
+	for _, vm := range container.VolumeMounts {
+		if vm.Name == "spire-agent-socket" {
+			found = true
+			if vm.MountPath != "/spiffe-workload-api" {
+				t.Errorf("spire-agent-socket mount path = %q, want /spiffe-workload-api (matches defaults.go SocketPath)", vm.MountPath)
+			}
+			if !vm.ReadOnly {
+				t.Error("spire-agent-socket mount should be read-only (CSI volume itself is read-only)")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("proxy-sidecar container missing spire-agent-socket mount when SPIRE is enabled — bundled spiffe-helper can't reach the workload API")
+	}
+}
+
+// TestBuildProxySidecarContainer_SpireDisabled_NoSocketMount mirrors
+// the envoy-proxy negative test for the proxy-sidecar variant.
+func TestBuildProxySidecarContainer_SpireDisabled_NoSocketMount(t *testing.T) {
+	builder := NewContainerBuilder(config.CompiledDefaults())
+	container := builder.BuildProxySidecarContainer(false)
+
+	for _, vm := range container.VolumeMounts {
+		if vm.Name == "spire-agent-socket" {
+			t.Error("proxy-sidecar container should NOT have spire-agent-socket mount when SPIRE is disabled")
+		}
+	}
+}
